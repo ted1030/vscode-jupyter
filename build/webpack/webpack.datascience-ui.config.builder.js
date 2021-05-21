@@ -273,7 +273,7 @@ function buildConfiguration(bundle) {
             }),
             ...getPlugins(bundle)
         ],
-        externals: ['log4js'],
+        externals: ['log4js', 'bufferutil', 'utf-8-validate'],
         resolve: {
             fallback: {
                 fs: false
@@ -360,6 +360,14 @@ function buildConfiguration(bundle) {
                 {
                     test: /\.less$/,
                     use: ['cache-loader', 'thread-loader', 'style-loader', 'css-loader', 'less-loader']
+                },
+                {
+                    test: /\.node$/,
+                    use: [
+                        {
+                            loader: 'node-loader'
+                        }
+                    ]
                 }
             ]
         }
