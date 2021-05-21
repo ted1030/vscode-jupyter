@@ -8,7 +8,7 @@
 const common = require('./common');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const FixDefaultImportPlugin = require('webpack-fix-default-import-plugin');
+// const FixDefaultImportPlugin = require('webpack-fix-default-import-plugin');
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin');
@@ -191,6 +191,7 @@ function buildConfiguration(bundle) {
             ...outputProps
         },
         mode: isProdBuild ? 'production' : 'development', // Leave as is, we'll need to see stack traces when there are errors.
+        target: 'node',
         devtool: isProdBuild ? undefined : 'inline-source-map',
         optimization: {
             minimize: isProdBuild,
@@ -262,11 +263,8 @@ function buildConfiguration(bundle) {
             },
             chunkIds: 'named'
         },
-        node: {
-            fs: 'empty'
-        },
         plugins: [
-            new FixDefaultImportPlugin(),
+            // new FixDefaultImportPlugin(),
             new CopyWebpackPlugin({
                 patterns: [...filesToCopy]
             }),
@@ -277,6 +275,9 @@ function buildConfiguration(bundle) {
         ],
         externals: ['log4js'],
         resolve: {
+            fallback: {
+                fs: false
+            },
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js', '.json', '.svg']
         },
