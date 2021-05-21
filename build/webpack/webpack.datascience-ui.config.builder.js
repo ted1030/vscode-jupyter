@@ -191,7 +191,7 @@ function buildConfiguration(bundle) {
             ...outputProps
         },
         mode: isProdBuild ? 'production' : 'development', // Leave as is, we'll need to see stack traces when there are errors.
-        target: 'node',
+        //target: 'node',
         devtool: isProdBuild ? undefined : 'inline-source-map',
         optimization: {
             minimize: isProdBuild,
@@ -276,7 +276,11 @@ function buildConfiguration(bundle) {
         externals: ['log4js', 'bufferutil', 'utf-8-validate'],
         resolve: {
             fallback: {
-                fs: false
+                fs: false,
+                "path": require.resolve("path-browserify"),
+                "crypto": require.resolve('crypto-browserify'),
+                "stream": require.resolve('stream-browserify'),
+                "vm": require.resolve('vm-browserify')
             },
             // Add '.ts' and '.tsx' as resolvable extensions.
             extensions: ['.ts', '.tsx', '.js', '.json', '.svg']
