@@ -16,7 +16,8 @@ import {
     NotebookCellExecutionState,
     notebooks,
     NotebookCellExecutionStateChangeEvent,
-    NotebookCellExecutionSummary
+    NotebookCellExecutionSummary,
+    NotebookRange
 } from 'vscode';
 import { concatMultilineString, splitMultilineString } from '../../../../datascience-ui/common';
 import { IVSCodeNotebook } from '../../../common/application/types';
@@ -39,6 +40,7 @@ import { IDisposable, Resource } from '../../../common/types';
 import { IFileSystem } from '../../../common/platform/types';
 import { CellOutputMimeTypes } from '../types';
 import { disposeAllDisposables } from '../../../common/helpers';
+import { chainWithPendingUpdates } from './notebookUpdater';
 
 /**
  * Whether this is a Notebook we created/manage/use.
@@ -890,4 +892,12 @@ export function findAssociatedNotebookDocument(cellUri: Uri, vscodeNotebook: IVS
     return vscodeNotebook.notebookDocuments.find((item) =>
         item.getCells().some((cell) => fs.arePathsSame(cell.document.uri, cellUri))
     );
+}
+
+export function appendMarkdownCell(notebookDocument: NotebookDocument, contents: string) {
+    return chainWithPendingUpdates(notebookDocument, (edit) => {
+        edit.replaceNotebookCells(notebookDocument.uri, new NotebookRange(notebookDocument.cellCount, notebookDocument.cellCount), [
+            new NotebookCellData(NotebookCellKind.Markup, contents, MARKDOWN_LANGUAGE)
+        ])
+    });
 }

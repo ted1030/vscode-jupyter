@@ -29,10 +29,7 @@ import { Commands, defaultNotebookFormat, EditorContexts, Identifiers } from '..
 import { ExportFormat, IExportDialog } from '../export/types';
 import {
     INotebookIdentity,
-    ISubmitNewCell,
-    SysInfoReason
-} from '../interactive-common/interactiveWindowTypes';
-import { getDisplayNameOrNameOfKernelConnection } from '../jupyter/kernels/helpers';
+    ISubmitNewCell} from '../interactive-common/interactiveWindowTypes';
 import { JupyterKernelPromiseFailedError } from '../jupyter/kernels/jupyterKernelPromiseFailedError';
 import { IKernel, IKernelProvider, KernelConnectionMetadata } from '../jupyter/kernels/types';
 import { InteractiveWindowView } from '../notebook/constants';
@@ -45,7 +42,6 @@ import {
     IInteractiveWindow,
     IInteractiveWindowInfo,
     IInteractiveWindowLoadable,
-    IMessageCell,
     INotebookExporter,
     InterruptResult,
     IStatusProvider,
@@ -190,72 +186,6 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
             metadata: e.controller.connection,
             controller: e.controller.controller
         });
-
-        this.kernelStartPromise = new Promise((resolve, reject) => {
-            this.kernel?.start({ document: notebookDocument }).then(() =>
-                // Append a Markdown cell to the notebook document
-                // containing kernel connection information
-                this.addSysInfo(SysInfoReason.Start)
-            ).then((info) => {
-                if (!info) {
-                    return;
-                }
-                resolve(this.addMessage(info));
-            }).catch(reject);
-        });
-    }
-
-    /**
-     * 
-     * @param reason Used internally in this class to determine what message to generate
-     * and display to users.
-     * @returns String representing sys info.
-     */
-    private addSysInfo = async (reason: SysInfoReason): Promise<string | undefined> => {
-        // Execute the code 'import sys\r\nsys.version' and 'import sys\r\nsys.executable' to get our
-        // version and executable
-        if (this.kernel) {
-            const message = this.getSysInfoReasonHeader(reason, this.kernel.notebook?.getKernelConnection());
-
-            // The server handles getting this data.
-            const sysInfo = await this.kernel.notebook?.getSysInfo();
-            if (sysInfo) {
-                // Connection string only for our initial start, not restart or interrupt
-                let connectionString: string = '';
-                if (reason === SysInfoReason.Start) {
-                    connectionString = this.kernel.notebook?.connection?.displayName || '';
-                }
-
-                // Update our sys info with our locally applied data.
-                const cell = sysInfo.data as IMessageCell;
-                if (cell) {
-                    cell.messages.unshift(message);
-                    if (connectionString && connectionString.length) {
-                        cell.messages.unshift(connectionString);
-                    }
-                }
-
-                return sysInfo.data.messages?.toString();
-            }
-        }
-    };
-
-    private getSysInfoReasonHeader(reason: SysInfoReason, connection: KernelConnectionMetadata | undefined): string {
-        const displayName = getDisplayNameOrNameOfKernelConnection(connection);
-        switch (reason) {
-            case SysInfoReason.Start:
-            case SysInfoReason.New:
-                return localize.DataScience.startedNewKernelHeader().format(displayName);
-            case SysInfoReason.Restart:
-                return localize.DataScience.restartedKernelHeader().format(displayName);
-            case SysInfoReason.Interrupt:
-                return localize.DataScience.pythonInterruptFailedHeader();
-            case SysInfoReason.Connect:
-                return localize.DataScience.connectKernelHeader().format(displayName);
-            default:
-                traceError('Invalid SysInfoReason');
-                return '';
-        }
     }
 
     private async getOrCreateInteractiveEditor(): Promise<NotebookDocument> {
@@ -317,6 +247,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         return false;
     }
 
+    // TODO Migrate all of this code into a common command handler
     public async interruptKernel(): Promise<void> {
         // trackKernelResourceInformation(this._notebook?.resource, { interruptKernel: true });
         if (this.kernel && !this.restartingKernel) {
@@ -351,7 +282,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
                     }
                 } else if (result === InterruptResult.Restarted) {
                     // Uh-oh, keyboard interrupt crashed the kernel.
-                    this.addSysInfo(SysInfoReason.Interrupt).ignoreErrors();
+                    // this.addSysInfo(SysInfoReason.Interrupt).ignoreErrors(); // This should be handled in kernel.ts
                 }
             } catch (err) {
                 status.dispose();
@@ -361,6 +292,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         }
     }
 
+    // TODO Migrate all of this code into a common command handler
     public async restartKernel(): Promise<void> {
         if (this.kernel?.notebook && !this.restartingKernel) {
             this.restartingKernel = true;
@@ -407,6 +339,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
 
     private async restartKernelInternal(): Promise<void> {
         this.restartingKernel = true;
+        const notebookDocument = await this.tryGetMatchingNotebookDocument();
 
         // Set our status
         const status = this.statusProvider.set(
@@ -418,9 +351,8 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         );
 
         try {
-            if (this.kernel) {
-                await this.kernel.restart();
-                await this.addSysInfo(SysInfoReason.Restart);
+            if (this.kernel && notebookDocument) {
+                await this.kernel.restart(notebookDocument);
 
                 // Reset our file in the kernel.
                 const fileInKernel = this.fileInKernel;
@@ -439,8 +371,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
             // If we get a kernel promise failure, then restarting timed out. Just shutdown and restart the entire server
             if (exc instanceof JupyterKernelPromiseFailedError && this.kernel?.notebook) {
                 await this.kernel.dispose();
-                await this.kernel.restart();
-                await this.addSysInfo(SysInfoReason.Restart);
+                await this.kernel.restart(notebookDocument!);
             } else {
                 // Show the error message
                 this.applicationShell.showErrorMessage(exc).then(noop, noop);
@@ -520,8 +451,10 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
 
         // Insert code cell into NotebookDocument
         const edit = new WorkspaceEdit();
+        const notebookCell = new NotebookCellData(NotebookCellKind.Code, code, 'python'); // Look at document.languageId
+        notebookCell.metadata = { inputCollapsed: true }; 
         edit.replaceNotebookCells(notebookDocument.uri, new NotebookRange(notebookDocument.cellCount, notebookDocument.cellCount), [
-            new NotebookCellData(NotebookCellKind.Code, code, 'python') // TODO generalize to arbitrary languages and cell types
+            notebookCell // TODO generalize to arbitrary languages and cell types
         ]);
         await workspace.applyEdit(edit);
 

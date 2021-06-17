@@ -131,7 +131,7 @@ export interface IKernel extends IAsyncDisposable {
     readonly kernelSocket: Observable<KernelSocketInformation | undefined>;
     start(options?: { disableUI?: boolean; document: NotebookDocument }): Promise<void>;
     interrupt(document: NotebookDocument): Promise<InterruptResult>;
-    restart(): Promise<void>;
+    restart(document: NotebookDocument): Promise<void>;
     executeCell(cell: NotebookCell): Promise<void>;
     executeAllCells(document: NotebookDocument): Promise<void>;
 }
