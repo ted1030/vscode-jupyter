@@ -450,7 +450,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         // Insert code cell into NotebookDocument
         const edit = new WorkspaceEdit();
         const notebookCell = new NotebookCellData(NotebookCellKind.Code, code, 'python'); // Look at document.languageId
-        notebookCell.metadata = { inputCollapsed: true }; 
+        notebookCell.metadata = { inputCollapsed: true }; // Hide the input because code is already visible on the left
         edit.replaceNotebookCells(notebookDocument.uri, new NotebookRange(notebookDocument.cellCount, notebookDocument.cellCount), [
             notebookCell // TODO generalize to arbitrary languages and cell types
         ]);

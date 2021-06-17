@@ -927,6 +927,6 @@ export async function addSysInfo(reason: SysInfoReason, notebookDocument: Notebo
             }
         }
 
-        await appendMarkdownCell(notebookDocument, cell.messages.join('\n'));
+        await appendMarkdownCell(notebookDocument, cell.messages.join('\n\n'));
     }
 }
