@@ -87,6 +87,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
     private kernel: IKernel | undefined;
     private isDisposed = false;
     private restartingKernel = false;
+    private loadKernelPromise: Promise<void> | undefined;
 
     constructor(
         private readonly applicationShell: IApplicationShell,
@@ -185,6 +186,8 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
             metadata: e.controller.connection,
             controller: e.controller.controller
         });
+
+        this.loadKernelPromise = this.kernel?.start({ disableUI: false, document: notebookDocument });
     }
 
     private async getOrCreateInteractiveEditor(): Promise<NotebookDocument> {
@@ -440,6 +443,9 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
     ): Promise<boolean> {
         // Ensure we always have a notebook document to submit code to
         const notebookDocument = await this.getOrCreateInteractiveEditor();
+
+        // Make sure our kernel has started before we try to put stuff 
+        await this.loadKernelPromise;
 
         // Insert code cell into NotebookDocument
         const edit = new WorkspaceEdit();
