@@ -27,11 +27,10 @@ import { StopWatch } from '../../../common/utils/stopWatch';
 import { sendTelemetryEvent } from '../../../telemetry';
 import { CodeSnippets, Telemetry } from '../../constants';
 import { sendKernelTelemetryEvent, trackKernelResourceInformation } from '../../telemetry/telemetry';
-import { appendMarkdownCell, getNotebookMetadata } from '../../notebook/helpers/helpers';
+import { addSysInfo, getNotebookMetadata } from '../../notebook/helpers/helpers';
 import {
     IDataScienceErrorHandler,
     IJupyterServerUriStorage,
-    IMessageCell,
     INotebook,
     INotebookEditorProvider,
     INotebookProvider,
@@ -39,11 +38,10 @@ import {
     InterruptResult,
     KernelSocketInformation
 } from '../../types';
-import { getSysInfoReasonHeader, isPythonKernelConnection } from './helpers';
+import { isPythonKernelConnection } from './helpers';
 import { KernelExecution } from './kernelExecution';
 import type { IKernel, IKernelProvider, KernelConnectionMetadata } from './types';
 import { SysInfoReason } from '../../interactive-common/interactiveWindowTypes';
-import { InteractiveWindowView } from '../../notebook/constants';
 
 export class Kernel implements IKernel {
     get connection(): INotebookProviderConnection | undefined {
@@ -126,7 +124,6 @@ export class Kernel implements IKernel {
     }
     public async start(options: { disableUI?: boolean; document: NotebookDocument }): Promise<void> {
         await this.startNotebook(options);
-        await this.addSysInfo(SysInfoReason.Start, options.document);
     }
     public async interrupt(document: NotebookDocument): Promise<InterruptResult> {
         if (this.restarting) {
@@ -138,7 +135,7 @@ export class Kernel implements IKernel {
         this.startCancellation.cancel();
         const interruptResultPromise = this.kernelExecution.interrupt(document, this._notebookPromise);
         await interruptResultPromise;
-        await this.addSysInfo(SysInfoReason.Interrupt, document);
+        await addSysInfo(SysInfoReason.Interrupt, document, this.notebook);
         return interruptResultPromise;
     }
     public async dispose(): Promise<void> {
@@ -163,7 +160,7 @@ export class Kernel implements IKernel {
             try {
                 await this.notebook.restartKernel(this.launchTimeout);
                 await this.initializeAfterStart();
-                await this.addSysInfo(SysInfoReason.Restart, notebookDocument);
+                await addSysInfo(SysInfoReason.Restart, notebookDocument, this.notebook);
                 this.restarting.resolve();
             } catch (ex) {
                 this.restarting.reject(ex);
@@ -218,6 +215,7 @@ export class Kernel implements IKernel {
                             // getOrCreateNotebook would return undefined only if getOnly = true (an issue with typings).
                             throw new Error('Kernel has not been started');
                         }
+                        await addSysInfo(SysInfoReason.Start, options.document, this.notebook);
                     } catch (ex) {
                         traceError(`failed to create INotebook in kernel, UI Disabled = ${options.disableUI}`, ex);
                         throw ex;
@@ -312,33 +310,6 @@ export class Kernel implements IKernel {
     private disableJedi() {
         if (isPythonKernelConnection(this.kernelConnectionMetadata) && this.notebook) {
             this.notebook.executeObservable(CodeSnippets.disableJedi, this.uri.fsPath, 0, uuid(), true);
-        }
-    }
-
-    private async addSysInfo(reason: SysInfoReason, notebookDocument: NotebookDocument) {
-        if (notebookDocument.notebookType !== InteractiveWindowView || this.notebook === undefined) {
-            return;
-        }
-
-        const message = getSysInfoReasonHeader(SysInfoReason.Start, this.notebook.getKernelConnection());
-        const sysInfo = await this.notebook.getSysInfo();
-        if (sysInfo) {
-            // Connection string only for our initial start, not restart or interrupt
-            let connectionString: string = '';
-            if (reason === SysInfoReason.Start) {
-                connectionString = this.notebook.connection?.displayName || '';
-            }
-
-            // Update our sys info with our locally applied data.
-            const cell = sysInfo.data as IMessageCell;
-            if (cell) {
-                cell.messages.unshift(message);
-                if (connectionString && connectionString.length) {
-                    cell.messages.unshift(connectionString);
-                }
-            }
-
-            await appendMarkdownCell(notebookDocument, cell.messages.join('\n'));
         }
     }
 }

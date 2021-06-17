@@ -29,8 +29,8 @@ import { sendTelemetryEvent } from '../../../telemetry';
 import { defaultNotebookFormat, Telemetry } from '../../constants';
 import { KernelConnectionMetadata, NotebookCellRunState } from '../../jupyter/kernels/types';
 import { updateNotebookMetadata } from '../../notebookStorage/baseModel';
-import { CellState, IJupyterKernelSpec } from '../../types';
-import { JupyterNotebookView } from '../constants';
+import { CellState, IJupyterKernelSpec, IMessageCell, INotebook } from '../../types';
+import { InteractiveWindowView, JupyterNotebookView } from '../constants';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { KernelMessage } from '@jupyterlab/services';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -41,6 +41,8 @@ import { IFileSystem } from '../../../common/platform/types';
 import { CellOutputMimeTypes } from '../types';
 import { disposeAllDisposables } from '../../../common/helpers';
 import { chainWithPendingUpdates } from './notebookUpdater';
+import { getSysInfoReasonHeader } from '../../jupyter/kernels/helpers';
+import { SysInfoReason } from '../../interactive-common/interactiveWindowTypes';
 
 /**
  * Whether this is a Notebook we created/manage/use.
@@ -900,4 +902,31 @@ export function appendMarkdownCell(notebookDocument: NotebookDocument, contents:
             new NotebookCellData(NotebookCellKind.Markup, contents, MARKDOWN_LANGUAGE)
         ])
     });
+}
+
+export async function addSysInfo(reason: SysInfoReason, notebookDocument: NotebookDocument, notebook: INotebook | undefined) {
+    if (notebookDocument.notebookType !== InteractiveWindowView || notebook === undefined) {
+        return;
+    }
+
+    const message = getSysInfoReasonHeader(SysInfoReason.Start, notebook.getKernelConnection());
+    const sysInfo = await notebook.getSysInfo();
+    if (sysInfo) {
+        // Connection string only for our initial start, not restart or interrupt
+        let connectionString: string = '';
+        if (reason === SysInfoReason.Start) {
+            connectionString = notebook.connection?.displayName || '';
+        }
+
+        // Update our sys info with our locally applied data.
+        const cell = sysInfo.data as IMessageCell;
+        if (cell) {
+            cell.messages.unshift(message);
+            if (connectionString && connectionString.length) {
+                cell.messages.unshift(connectionString);
+            }
+        }
+
+        await appendMarkdownCell(notebookDocument, cell.messages.join('\n'));
+    }
 }
