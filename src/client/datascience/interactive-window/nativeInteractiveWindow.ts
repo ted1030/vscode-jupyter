@@ -91,6 +91,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
     private kernel: IKernel | undefined;
     private isDisposed = false;
     private restartingKernel = false;
+    private kernelStartPromise: Promise<void> | undefined;
 
     constructor(
         private readonly applicationShell: IApplicationShell,
@@ -118,7 +119,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
 
         // For now, VS Code returns us the NotebookDocument URI and the InputEditor URI from this command
         this.loadPromise = this.commandManager.executeCommand('interactive.open', ViewColumn.Beside) as Thenable<INativeInteractiveWindow>;
-        
+
         // Listen for when a notebook controller is selected for the NotebookDocument
         this.notebookControllerManager.onNotebookControllerSelected(this.handleNotebookControllerSelected, this, this.disposables);
     }
@@ -185,15 +186,23 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         }
 
         // Update the cached kernel for this controller
-        this.kernel = this.kernelProvider.get(notebookDocument.uri);
+        this.kernel = this.kernelProvider.getOrCreate(notebookDocument.uri, {
+            metadata: e.controller.connection,
+            controller: e.controller.controller
+        });
 
-        // Append a Markdown cell to the notebook document
-        // containing kernel connection information
-        const info = await this.addSysInfo(SysInfoReason.Start);
-        if (!info) {
-            return;
-        }
-        await this.addMessage(info);
+        this.kernelStartPromise = new Promise((resolve, reject) => {
+            this.kernel?.start({ document: notebookDocument }).then(() =>
+                // Append a Markdown cell to the notebook document
+                // containing kernel connection information
+                this.addSysInfo(SysInfoReason.Start)
+            ).then((info) => {
+                if (!info) {
+                    return;
+                }
+                resolve(this.addMessage(info));
+            }).catch(reject);
+        });
     }
 
     /**
@@ -502,6 +511,13 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
         // Ensure we always have a notebook document to submit code to
         const notebookDocument = await this.getOrCreateInteractiveEditor();
 
+        if (!this.kernelStartPromise) {
+            return false; // TODO Instead we should queue execution requests
+        }
+
+        // Ensure our kernel is started
+        await this.kernelStartPromise;
+
         // Insert code cell into NotebookDocument
         const edit = new WorkspaceEdit();
         edit.replaceNotebookCells(notebookDocument.uri, new NotebookRange(notebookDocument.cellCount, notebookDocument.cellCount), [
@@ -662,7 +678,7 @@ export class NativeInteractiveWindow implements IInteractiveWindowLoadable {
 
     /// The following are implemented only for compliance with the IInteractiveWindow
     /// interface and can be deleted once the native notebooks API migration is complete.
-    
+
     public get title() {
         return '';
     }
