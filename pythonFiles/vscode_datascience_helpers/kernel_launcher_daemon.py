@@ -71,12 +71,15 @@ class PythonDaemon(JupyterDaemon):
             # Signal the kernel to terminate (sends SIGKILL on Unix and calls
             # TerminateProcess() on Win32).
             try:
-                if hasattr(signal, "SIGKILL"):
-                    self.signal_kernel(signal.SIGKILL)
-                else:
-                    self.kernel.kill()
+                self.kernel.kill()
+                # Wait until it dies as the caller is expecting the kernel to be dead
+                self.kernel.wait()
             except OSError:
+                self.log.info(
+                    "Kill kernel in DS Kernel Daemon failed %s", sys.exc_info()[0]
+                )
                 pass
+
 
     @error_decorator
     def m_prewarm_kernel(self):

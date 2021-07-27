@@ -175,7 +175,7 @@ export class KernelProcess implements IKernelProcess {
                     defaultValue: undefined
                 })
             ]);
-        } catch (e) {
+        } catch (e: any) {
             traceError('Disposing kernel process due to an error', e);
             // Make sure to dispose if we never get a heartbeat
             this.dispose().ignoreErrors();
