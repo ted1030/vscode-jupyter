@@ -43,6 +43,7 @@ env:
   IPYWIDGET_SCREENSHOT_PATH: '*-screenshot.png'
   DISABLE_INSIDERS_EXTENSION: 1 # Disable prompts to install Insiders in tests (else it blocks activation of extension).
   VSC_JUPYTER_INSTRUMENT_CODE_FOR_COVERAGE: true
+  VSIX_NAME_PYTHON: 'ms-python-insiders.vsix'
 
 jobs:
   pick_environment:
@@ -73,11 +74,11 @@ jobs:
           echo "vsix_name=ms-toolsai-jupyter-insiders.vsix" >> $GITHUB_ENV
           echo "test_matrix_os=[\"ubuntu-latest\", \"windows-latest\"]" >> $GITHUB_ENV
 
-    #   - name: insiders channel
-    #     # Scheduled builds will publish Insider builds.
-    #     if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
-    #     run: |
-    #       echo "release_channel=insider" >> $GITHUB_ENV
+      #   - name: insiders channel
+      #     # Scheduled builds will publish Insider builds.
+      #     if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+      #     run: |
+      #       echo "release_channel=insider" >> $GITHUB_ENV
 
       - name: release
         if: github.event_name == 'push' && contains(github.ref, 'refs/heads/release')
@@ -505,7 +506,6 @@ jobs:
         if: matrix.python != 'conda' && matrix.python != 'noPython' && matrix.os == 'macos-latest'
         run: pip install torch torchvision torchaudio
 
-
       - name: Use Conda Python ${{matrix.python}}
         uses: conda-incubator/setup-miniconda@v2
         if: env.conda_python
@@ -623,6 +623,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+
+      - name: Azure Login
+        uses: azure/login@v1.1.1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+        if: matrix.test-suite == 'integration' || matrix.test-suite == 'notebook'
+
+      - name: Download Python VSIX
+        run: az storage blob download --file ${{env.VSIX_NAME_PYTHON}} --account-name pvsc --container-name extension-builds --name ${{ env.VSIX_NAME_PYTHON }}
+        if: matrix.test-suite == 'integration' || matrix.test-suite == 'notebook'
 
       - name: Use Python ${{matrix.pythonVersion}}
         uses: actions/setup-python@v2
